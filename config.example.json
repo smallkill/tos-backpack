@@ -1,4 +1,5 @@
 {
   "uid": "123456789",
-  "siteDir": "~/path/to/your/site/tos-cards"
+  "siteDir": "~/path/to/your/site/tos-cards",
+  "imgBase": "https://<你的網站>/tos-cards/img/"
 }

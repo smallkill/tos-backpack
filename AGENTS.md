@@ -30,9 +30,9 @@
   不寫入任何檔案、log、錯誤訊息。
 - **個資不外流**:原始 profile(含 UID、暱稱、互助訊息)只存在 `.cache/`(gitignore、權限 0600)。
   公開輸出只能有:卡號、數量、最高等級(等級/技能/強化)、卡名、屬性、種族、星數、更新日期。
-- UID、網站路徑不寫死在程式碼;設定優先序:命令列旗標 > 環境變數(`TOS_UID`/`TOS_SITE_DIR`)> `config.json`(gitignore)。
+- UID、網站路徑不寫死在程式碼;設定優先序:命令列旗標 > 環境變數(`TOS_UID`/`TOS_SITE_DIR`/`TOS_IMG_BASE`)> `config.json`(gitignore)。
 - 朋友版:必須明確給 `--uid` 且不可等於自己的 UID;`--slug` 只允許 `[a-z0-9-]`、≤32 字、不可含 UID 或 5 碼以上數字;
-  不可碰自己的 `data/` 與網站目錄。`--img-base` 必須 https 且以 `/` 結尾。
+  不可碰自己的 `data/` 與網站目錄。卡圖網址 `imgBase`(config.json / `TOS_IMG_BASE` / `--img-base`)必須 https 且以 `/` 結尾,**程式不內建預設圖庫**(不可寫死任何人的網站或拿第三方 repo 當圖床),未設定就報錯。
 - `--publish` 只 `git add/commit` 自己複製的那幾個檔案,**不 push**(push 由人決定)。
 
 ### 模組地圖

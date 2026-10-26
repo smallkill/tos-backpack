@@ -188,6 +188,11 @@ test('parseArgs / loadConfig 優先序:旗標 > env > config.json', () => {
   const c = loadConfig({ flags: f, env: { TOS_UID: '333333333' }, root: d })
   assert.equal(c.uid, '222222222'); assert.equal(c.slug, 'amy'); assert.ok(c.siteDir.endsWith('/fromfile') && !c.siteDir.includes('~'))
   assert.throws(() => loadConfig({ flags: { uid: 'abc' }, env: {}, root: d }))
+  assert.equal(c.imgBase, null)
+  fs.writeFileSync(path.join(d, 'config.json'), JSON.stringify({ uid: '111111111', imgBase: 'https://file/' }))
+  assert.equal(loadConfig({ flags: {}, env: {}, root: d }).imgBase, 'https://file/')
+  assert.equal(loadConfig({ flags: {}, env: { TOS_IMG_BASE: 'https://env/' }, root: d }).imgBase, 'https://env/')
+  assert.equal(loadConfig({ flags: { 'img-base': 'https://flag/' }, env: { TOS_IMG_BASE: 'https://env/' }, root: d }).imgBase, 'https://flag/')
   assert.throws(() => loadConfig({ flags: { uid: '222222222', slug: 'a222222222b' }, env: {}, root: d }))
   assert.throws(() => parseArgs(['--uid'], [], ['uid']))
   assert.throws(() => parseArgs(['--slugg', 'amy'], [], ['slug']), /未知旗標/)
@@ -206,12 +211,12 @@ test('朋友版:自含 index.html,不碰 data/ 與網站目錄、不含 uid/暱�
   fs.copyFileSync(real, path.join(prof, 't-amy.json'))
   const cardsBefore = fs.readFileSync(path.join(ROOT, 'data/cards.json'), 'utf8')
   try {
-    const r = spawnSync('node', [path.join(ROOT, 'bin/tos-update'), '--offline', '--slug', 't-amy', '--uid', '444444444', '--out', out], { encoding: 'utf8' })
+    const r = spawnSync('node', [path.join(ROOT, 'bin/tos-update'), '--offline', '--slug', 't-amy', '--uid', '444444444', '--out', out, '--img-base', 'https://img.example/tos/'], { encoding: 'utf8' })
     assert.equal(r.status, 0, r.stderr + r.stdout)
     assert.deepEqual(fs.readdirSync(out), ['index.html'])
     const h = fs.readFileSync(path.join(out, 'index.html'), 'utf8')
     assert.match(h, /window\.TOS_EMBED=/)
-    assert.ok(h.includes('https://smallkill.github.io/guide/tos-cards/img/'))
+    assert.ok(h.includes('https://img.example/tos/'))
     for (const bad of ['444444444', '111222333', JSON.parse(fs.readFileSync(path.join(ROOT, 'config.json'), 'utf8')).uid, 'displayName', 'SECRET', '"acquiredAt"']) assert.ok(!h.includes(bad), bad)
     assert.equal(fs.readFileSync(path.join(ROOT, 'data/cards.json'), 'utf8'), cardsBefore) // Derek 資料不受影響
     // 內嵌資料可還原
@@ -222,13 +227,17 @@ test('朋友版:自含 index.html,不碰 data/ 與網站目錄、不含 uid/暱�
 
 test('朋友版必須明確 --uid;不可 --publish', () => {
   const bin = path.join(ROOT, 'bin/tos-update')
+  // 卡圖網址無效時,在讀驗證碼/登入前就 exit 2(用無效值蓋過任何本機 config.json)
+  const nb = spawnSync('node', [bin, '--slug', 'amy', '--uid', '444444444', '--img-base', 'http://no/'], { encoding: 'utf8', input: '' })
+  assert.equal(nb.status, 2); assert.match(nb.stderr, /https/); assert.ok(!/驗證碼|login/.test(nb.stderr))
   assert.equal(spawnSync('node', [bin, '--slug', 'amy'], { encoding: 'utf8', input: 'x\n' }).status, 2)
   assert.equal(spawnSync('node', [bin, '--offline', '--slug', 'amy', '--publish'], { encoding: 'utf8' }).status, 2)
 })
 
 test('buildEmbedHtml:跳脫 </script>、拒絕不安全 imgBase', async () => {
   const { buildEmbedHtml } = await import('../lib/embed.mjs')
-  const h = buildEmbedHtml('<html><script>x</script>', { cards: [{ id: 1, name: '</script><b>', unknown: true }] }, [[1, '</script>', '', '', 0]])
+  const h = buildEmbedHtml('<html><script>x</script>', { cards: [{ id: 1, name: '</script><b>', unknown: true }] }, [[1, '</script>', '', '', 0]], 'https://img.example/')
+  assert.throws(() => buildEmbedHtml('<script>', { cards: [] }, []), /卡圖網址/)
   assert.equal((h.match(/<\/script>/g) || []).length, 2) // 只有注入的結尾 + 模板自己的
   assert.throws(() => buildEmbedHtml('<script>', { cards: [] }, [], 'javascript:alert(1)'))
   assert.throws(() => buildEmbedHtml('<script>', { cards: [] }, [], 'https://x.com/"onerror='))
@@ -260,12 +269,13 @@ test('朋友版 --out 不可指到網站目錄/專案內 data、web;離線朋友
   const prof = path.join(ROOT, '.cache/profiles'); fs.mkdirSync(prof, { recursive: true })
   fs.copyFileSync(real, path.join(prof, 't-out.json'))
   const d = tmp(), site = path.join(d, 'site'); fs.mkdirSync(site)
-  const run = (...a) => spawnSync('node', [bin, '--offline', '--slug', 't-out', ...a], { encoding: 'utf8' })
+  const run = (...a) => spawnSync('node', [bin, '--offline', '--slug', 't-out', '--img-base', 'https://img.example/', ...a], { encoding: 'utf8' })
+  const bad = r => { assert.equal(r.status, 2); assert.match(r.stderr, /--out/) }
   try {
-    assert.equal(run('--out', site, '--site', site).status, 2)
-    assert.equal(run('--out', path.join(site, 'x'), '--site', site).status, 2)
-    assert.equal(run('--out', path.join(ROOT, 'web')).status, 2)
-    assert.equal(run('--out', path.join(ROOT, 'data')).status, 2)
+    bad(run('--out', site, '--site', site))
+    bad(run('--out', path.join(site, 'x'), '--site', site))
+    bad(run('--out', path.join(ROOT, 'web')))
+    bad(run('--out', path.join(ROOT, 'data')))
     const ok = run('--out', path.join(d, 'out'))
     assert.equal(ok.status, 0, ok.stderr + ok.stdout) // 不給 --uid 的離線朋友版可用
     assert.ok(fs.existsSync(path.join(d, 'out/index.html')))

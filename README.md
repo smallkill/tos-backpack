@@ -9,7 +9,7 @@ Node 20+(實測 24)、Python 3 + Pillow(轉 webp)、`npm install`(只有 acorn �
 
 ## 設定
 複製 `config.example.json` 為 `config.json`(已 gitignore),填入 UID 與網站輸出目錄(你的靜態網站內放 `index.html` 的資料夾)。
-也可用旗標 `--uid` / `--site` 或環境變數 `TOS_UID` / `TOS_SITE_DIR`(優先序:旗標 > 環境變數 > config.json)。
+朋友版另需 `imgBase`(卡圖公開網址,見下)。也可用旗標 `--uid` / `--site` / `--img-base` 或環境變數 `TOS_UID` / `TOS_SITE_DIR` / `TOS_IMG_BASE`(優先序:旗標 > 環境變數 > config.json)。
 網頁模板在 `web/index.html`(`--publish` 會把它連同 `cards.json`、`monsters.json`、`img/` 複製到網站目錄)。
 
 ## 取得驗證碼
@@ -26,7 +26,7 @@ echo <朋友的驗證碼> | bin/tos-update --uid <朋友UID> --slug amy [--out <
 ```
 - 驗證碼從 stdin 讀(終端機下不回顯),或環境變數 `TOS_AUTH`;**不接受命令列參數**(避免進 shell 歷史與 ps),未知旗標一律報錯。
 - `--slug`:只允許 `[a-z0-9-]`,最長 32,不可含 UID 或 5 碼以上數字。
-- 朋友版產出單一自含 `out/<slug>/index.html`(約 400KB,資料內嵌,可離線開)。卡圖預設載入自 `https://smallkill.github.io/guide/tos-cards/img/`,可用 `--img-base` 改成自己的圖庫(需 https、結尾 `/`,檔名 `<卡號>.webp`)。
+- 朋友版產出單一自含 `out/<slug>/index.html`(約 400KB,資料內嵌,可離線開)。卡圖從 `imgBase` 載入:在 `config.json` 設 `imgBase`(或環境變數 `TOS_IMG_BASE`、旗標 `--img-base`),通常填你自己網站 `img/` 的公開網址(需 https、結尾 `/`,檔名 `<卡號>.webp`);沒設定會報錯,程式不內建任何人的圖庫。
 - 自己的版本 `--publish`:複製到網站目錄並只 `git add/commit` 那幾個檔案(**不 push**)。
 - `--offline`:不登入,用 `.cache/profile.json`(朋友版 `.cache/profiles/<slug>.json`,權限 600)重建。
 - `--no-images`、`--refresh-monsters`、`--bump-sha`(把 tos-tools 的固定 commit 升到最新,見 `lib/pin.json`)。

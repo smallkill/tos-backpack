@@ -4,7 +4,7 @@
 //   tos-update --uid <UID> --slug <代號> [--out <資料夾>] [--img-base <URL>]
 //                                               朋友版:產生單一自含 out/<slug>/index.html,不碰網站目錄
 //   --offline 不登入,用 .cache/profile.json(朋友版 .cache/profiles/<slug>.json)重建
-// 設定優先序:旗標 > 環境變數(TOS_UID / TOS_SITE_DIR)> config.json(見 config.example.json)
+// 設定優先序:旗標 > 環境變數(TOS_UID / TOS_SITE_DIR / TOS_IMG_BASE)> config.json(見 config.example.json)
 // 其他旗標: --site <目錄> / --no-images / --refresh-monsters / --bump-sha
 // 驗證碼從 stdin 讀(TTY 不回顯)或環境變數 TOS_AUTH;不接受命令列參數,也不寫入任何檔案或 log。
 import fs from 'node:fs'
@@ -17,7 +17,7 @@ import { readAuth } from '../lib/auth.mjs'
 import { rawBase } from '../lib/images.mjs'
 import pin from '../lib/pin.json' with { type: 'json' }
 import { updateFromProfile } from '../lib/update.mjs'
-import { buildEmbedHtml, DEFAULT_IMG_BASE, checkImgBase } from '../lib/embed.mjs'
+import { buildEmbedHtml, checkImgBase } from '../lib/embed.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const CACHE = path.join(ROOT, '.cache')
@@ -41,6 +41,9 @@ const friend = cfg.slug !== null
 }
 if (friend && flags.has('--publish')) { console.error('朋友版(--slug)不會 publish 到網站目錄;產出在 out/<slug>/'); process.exit(2) }
 if (parsed.positional.length) { console.error('不接受命令列參數(驗證碼請走 stdin 或 TOS_AUTH)'); process.exit(2) }
+// 朋友版的卡圖網址先驗證,免得登入、抓完資料才失敗
+let imgBase = null
+if (friend) { try { imgBase = checkImgBase(cfg.imgBase) } catch (e) { console.error(e.message); process.exit(2) } }
 const P = paths(ROOT, cfg.slug)
 
 if (flags.has('--bump-sha')) {
@@ -90,7 +93,6 @@ log(`cards.json:總張數 ${out.totalCards} / 獨立卡號 ${out.uniqueCards} / 
 if (images) log(`圖片:需要 ${images.requested}、已有快取 ${images.cached}、新下載 ${images.downloaded}、repo 無圖 ${images.notFound.length}、失敗 ${images.failed.length}`)
 
 if (friend) {
-  const imgBase = checkImgBase(flagObj['img-base'] || DEFAULT_IMG_BASE)
   const outDir = path.resolve(flagObj.out || path.join(ROOT, 'out', cfg.slug))
   const under = (p, base) => base && (p === base || p.startsWith(base + path.sep))
   const real = p => { try { return fs.realpathSync(p) } catch { return path.resolve(p) } }
