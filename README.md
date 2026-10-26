@@ -9,11 +9,11 @@ Node 20+(實測 24)、Python 3 + Pillow(轉 webp)、`npm install`(只有 acorn �
 
 ## 設定
 複製 `config.example.json` 為 `config.json`(已 gitignore),填入 UID 與網站輸出目錄(你的靜態網站內放 `index.html` 的資料夾)。
-朋友版另需 `imgBase`(卡圖公開網址,見下)。也可用旗標 `--uid` / `--site` / `--img-base` 或環境變數 `TOS_UID` / `TOS_SITE_DIR` / `TOS_IMG_BASE`(優先序:旗標 > 環境變數 > config.json)。
+朋友版需要卡圖公開網址:`imgBase`;未設時自動用 `poolBase` + `img/`(兩者都沒有就報錯)。也可用旗標 `--uid` / `--site` / `--img-base` 或環境變數 `TOS_UID` / `TOS_SITE_DIR` / `TOS_IMG_BASE`(優先序:旗標 > 環境變數 > config.json)。
 自己的頁面模板在 `web/index.html`:`--publish` 只把它(注入卡池網址)與 `cards.json` 複製到網站目錄並 commit;`monsters.json` 與卡圖從共用卡池站載入,網址設在 `poolBase`(config.json / 環境變數 `TOS_POOL_BASE` / 旗標 `--pool-base`,需 https 且以 `/` 結尾)。
 
 ## 公開卡池站與「查詢我的背包」頁(`docs/`)
-`bin/tos-update`(非朋友版)每次執行會把 `data/monsters.json`、`data/img/`(只複製新增/變動檔)與查詢頁(`web/lookup.html` → `docs/index.html`、`web/lookup.js` → `docs/lookup.js`)同步到 `docs/`,並放 `.nojekyll`。`docs/` 以 GitHub Pages 發佈(Settings → Pages → main /docs),commit/push 由人決定。
+`bin/tos-update`(非朋友版)每次執行會把 `data/monsters.json`、`data/img/`(只複製新增/變動檔)與查詢頁(`web/lookup.html` → `docs/index.html`、`web/lookup.js`、`web/lookup-app.js` → `docs/`)同步到 `docs/`,並放 `.nojekyll`。`docs/` 以 GitHub Pages 發佈(Settings → Pages → main /docs),commit/push 由人決定。
 查詢頁是純前端:任何玩家輸入自己的 UID 與互助檢視驗證碼,瀏覽器直連官方 API,在記憶體彙整後顯示全卡池(有的彩色、沒有的灰階)。驗證碼只用於登入一次,不儲存、不 log、不進網址;本站不會收到任何背包資料。非官方,遊戲改 API 可能失效。
 本機預覽:`python3 -m http.server -d docs`。
 
@@ -31,7 +31,7 @@ echo <朋友的驗證碼> | bin/tos-update --uid <朋友UID> --slug amy [--out <
 ```
 - 驗證碼從 stdin 讀(終端機下不回顯),或環境變數 `TOS_AUTH`;**不接受命令列參數**(避免進 shell 歷史與 ps),未知旗標一律報錯。
 - `--slug`:只允許 `[a-z0-9-]`,最長 32,不可含 UID 或 5 碼以上數字。
-- 朋友版產出單一自含 `out/<slug>/index.html`(約 400KB,資料內嵌,可離線開)。卡圖從 `imgBase` 載入:在 `config.json` 設 `imgBase`(或環境變數 `TOS_IMG_BASE`、旗標 `--img-base`),通常填你自己網站 `img/` 的公開網址(需 https、結尾 `/`,檔名 `<卡號>.webp`);沒設定會報錯,程式不內建任何人的圖庫。
+- 朋友版產出單一自含 `out/<slug>/index.html`(約 400KB,資料內嵌,可離線開)。卡圖從 `imgBase` 載入:在 `config.json` 設 `imgBase`(或環境變數 `TOS_IMG_BASE`、旗標 `--img-base`;需 https、結尾 `/`,檔名 `<卡號>.webp`);沒設 `imgBase` 時退回 `poolBase` + `img/`;兩者都沒設定會報錯,程式不內建任何人的圖庫。
 - 自己的版本 `--publish`:複製到網站目錄並只 `git add/commit` 那幾個檔案(**不 push**)。
 - `--offline`:不登入,用 `.cache/profile.json`(朋友版 `.cache/profiles/<slug>.json`,權限 600)重建。
 - `--no-images`、`--refresh-monsters`、`--bump-sha`(把 tos-tools 的固定 commit 升到最新,見 `lib/pin.json`)。

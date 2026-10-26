@@ -13,7 +13,7 @@ import { readAuth } from '../lib/auth.mjs'
 import { Readable } from 'node:stream'
 import { spawnSync } from 'node:child_process'
 import { syncPool } from '../lib/pool.mjs'
-import { injectPoolBase } from '../lib/embed.mjs'
+import { injectPoolBase, resolveImgBase } from '../lib/embed.mjs'
 import { validateSlug, parseArgs, loadConfig, paths } from '../lib/config.mjs'
 
 const tmp = () => fs.mkdtempSync(path.join(process.env.HOME, 'projects/tos-backpack/.cache/test-'))
@@ -220,7 +220,7 @@ test('朋友版:自含 index.html,不碰 data/ 與網站目錄、不含 uid/暱�
     assert.match(h, /window\.TOS_EMBED=/)
     assert.ok(h.includes('https://img.example/tos/'))
     for (const bad of ['444444444', '111222333', JSON.parse(fs.readFileSync(path.join(ROOT, 'config.json'), 'utf8')).uid, 'displayName', 'SECRET', '"acquiredAt"']) assert.ok(!h.includes(bad), bad)
-    assert.equal(fs.readFileSync(path.join(ROOT, 'data/cards.json'), 'utf8'), cardsBefore) // Derek 資料不受影響
+    assert.equal(fs.readFileSync(path.join(ROOT, 'data/cards.json'), 'utf8'), cardsBefore) // 自己的資料不受影響
     // 內嵌資料可還原
     const m = h.match(/window\.TOS_EMBED=(.*)<\/script>/); const E = JSON.parse(m[1])
     assert.equal(E.cards.uniqueCards, E.cards.cards.length); assert.ok(E.monsters.length > 4000)
@@ -343,9 +343,20 @@ test('lookup.html 不引用 cards.json、不含擁有者絕對網址、有 CSP �
   assert.ok(!/https?:\/\/(?!website-api\.tosgame\.com)/.test(html), '只允許官方 API 的絕對網址')
   assert.match(html, /name="robots" content="noindex"/)
   assert.match(html, /Content-Security-Policy[^>]*connect-src 'self' https:\/\/website-api\.tosgame\.com/)
-  assert.match(html, /type="password"[^>]*autocomplete="off"|autocomplete="off"[^>]*type="password"/)
-  assert.ok(!/localStorage\.setItem\([^)]*code/i.test(html))
-  assert.ok(!/console\./.test(html), '不 log')
+  const csp = html.match(/Content-Security-Policy" content="([^"]*)"/)[1]
+  assert.match(csp, /script-src 'self';/)
+  assert.ok(!/script-src[^;]*unsafe-inline/.test(csp), 'script-src 不可有 unsafe-inline')
+  assert.ok(!/<script(?![^>]*\ssrc=)/.test(html), '不可有行內 <script>')
+  assert.ok(!/\son\w+\s*=/.test(html), '不可有行內事件屬性')
+  assert.match(html, /<input id="code"[^>]*type="text"[^>]*autocomplete="one-time-code"[^>]*inputmode="numeric"|<input id="code"[^>]*autocomplete="one-time-code"/)
+  assert.ok(!/type="password"/.test(html))
+  assert.match(html, /-webkit-text-security:\s*disc/)
+  for (const f of ['web/lookup.html', 'web/lookup.js', 'web/lookup-app.js']) {
+    const t = fs.readFileSync(path.join(ROOT, f), 'utf8')
+    assert.ok(!/console\./.test(t), f + ' 不可 log')
+    assert.ok(!/localStorage\.setItem\([^)]*code/i.test(t), f + ' 不可存驗證碼')
+    assert.ok(!/onerror\s*=/.test(t), f + ' 不可有行內 onerror')
+  }
 })
 
 test('syncPool 只複製新增/變動的檔,並放 .nojekyll、查詢頁,不含 cards.json', () => {
@@ -354,7 +365,7 @@ test('syncPool 只複製新增/變動的檔,並放 .nojekyll、查詢頁,不含 
   fs.writeFileSync(path.join(data, 'monsters.json'), '[]'); fs.writeFileSync(path.join(data, 'cards.json'), '{"secret":1}')
   fs.writeFileSync(path.join(data, 'img/1.webp'), 'a'); fs.writeFileSync(path.join(data, 'img/x.txt'), 'n')
   const a = syncPool({ dataDir: data, webDir: path.join(ROOT, 'web'), docsDir: docs })
-  assert.equal(a.copied, 4) // index.html、lookup.js、monsters.json、1.webp
+  assert.equal(a.copied, 5) // index.html、lookup.js、lookup-app.js、monsters.json、1.webp
   assert.ok(!fs.existsSync(path.join(docs, 'cards.json')) && !fs.existsSync(path.join(docs, 'img/x.txt')))
   fs.rmSync(d, { recursive: true })
 })
@@ -366,7 +377,7 @@ test('syncPool 重跑無變動;改一張圖只更新那張', () => {
   const web = path.join(ROOT, 'web')
   syncPool({ dataDir: data, webDir: web, docsDir: docs })
   assert.ok(fs.existsSync(path.join(docs, '.nojekyll')))
-  assert.deepEqual(fs.readdirSync(docs).sort(), ['.nojekyll', 'img', 'index.html', 'lookup.js', 'monsters.json'])
+  assert.deepEqual(fs.readdirSync(docs).sort(), ['.nojekyll', 'img', 'index.html', 'lookup-app.js', 'lookup.js', 'monsters.json'])
   assert.equal(syncPool({ dataDir: data, webDir: web, docsDir: docs }).copied, 0)
   fs.writeFileSync(path.join(data, 'img/2.webp'), 'bb')
   assert.equal(syncPool({ dataDir: data, webDir: web, docsDir: docs }).copied, 1)
@@ -392,9 +403,25 @@ test('web/index.html 的資料基底來自 TOS_POOL_BASE;--publish 缺 poolBase 
   assert.match(html, /POOL\+'monsters\.json'/)
   assert.match(html, /POOL\+'img\/'/)
   assert.match(html, /fetch\('cards\.json'\)/)
-  const r = spawnSync('node', [path.join(ROOT, 'bin/tos-update'), '--offline', '--no-images', '--publish'], { encoding: 'utf8', env: { ...process.env, TOS_POOL_BASE: '', TOS_SITE_DIR: '/nonexistent-x/y', TOS_DOCS_DIR: path.join(tmp(), 'docs') } })
-  // config.json 可能已有 poolBase:此時改驗不 crash;無 poolBase 時必為 2
-  if (!/poolBase|pool-base/.test(fs.readFileSync(path.join(ROOT, 'config.json'), 'utf8'))) assert.equal(r.status, 2)
+  const d = tmp() // 空的設定目錄:與本機 config.json 無關
+  fs.writeFileSync(path.join(d, 'config.json'), JSON.stringify({ uid: '111111111', siteDir: path.join(d, 'site') }))
+  const r = spawnSync('node', [path.join(ROOT, 'bin/tos-update'), '--offline', '--no-images', '--publish'], { encoding: 'utf8', env: { ...process.env, TOS_CONFIG_DIR: d, TOS_POOL_BASE: '', TOS_SITE_DIR: '', TOS_DOCS_DIR: path.join(d, 'docs') } })
+  assert.equal(r.status, 2, r.stderr)
+  assert.match(r.stderr, /poolBase/)
+  fs.rmSync(d, { recursive: true, force: true })
+})
+
+test('resolveImgBase:imgBase 優先,否則 poolBase + img/,都沒有報錯;CLI 兩者皆缺退出碼 2', () => {
+  assert.equal(resolveImgBase('https://i.example/x/', 'https://p.example/'), 'https://i.example/x/')
+  assert.equal(resolveImgBase('', 'https://p.example/'), 'https://p.example/img/')
+  assert.equal(resolveImgBase(null, 'https://p.example/pool/'), 'https://p.example/pool/img/')
+  assert.throws(() => resolveImgBase(null, null))
+  assert.throws(() => resolveImgBase(null, 'http://p.example/'))
+  const d = tmp()
+  fs.writeFileSync(path.join(d, 'config.json'), JSON.stringify({ uid: '111111111' }))
+  const run = (extra, env = {}) => spawnSync('node', [path.join(ROOT, 'bin/tos-update'), '--offline', '--slug', 't-pool', '--uid', '444444444', '--out', path.join(d, 'out'), ...extra], { encoding: 'utf8', env: { ...process.env, TOS_CONFIG_DIR: d, TOS_IMG_BASE: '', TOS_POOL_BASE: '', ...env } })
+  assert.equal(run([]).status, 2) // 兩者皆未設:仍報錯
+  fs.rmSync(d, { recursive: true, force: true })
 })
 
 test('docs/ 內查詢頁與 web/ 來源一致;docs/ 無 cards.json;git 追蹤檔不含 smallkill', () => {
@@ -402,11 +429,19 @@ test('docs/ 內查詢頁與 web/ 來源一致;docs/ 無 cards.json;git 追蹤檔
   if (fs.existsSync(docs)) {
     assert.ok(!fs.existsSync(path.join(docs, 'cards.json')))
     assert.equal(fs.readFileSync(path.join(docs, 'index.html'), 'utf8'), fs.readFileSync(path.join(ROOT, 'web/lookup.html'), 'utf8'))
-    assert.equal(fs.readFileSync(path.join(docs, 'lookup.js'), 'utf8'), fs.readFileSync(path.join(ROOT, 'web/lookup.js'), 'utf8'))
+    for (const f of ['lookup.js', 'lookup-app.js']) assert.equal(fs.readFileSync(path.join(docs, f), 'utf8'), fs.readFileSync(path.join(ROOT, 'web', f), 'utf8'))
+    const top = fs.readdirSync(docs).sort()
+    assert.deepEqual(top, ['.nojekyll', 'img', 'index.html', 'lookup-app.js', 'lookup.js', 'monsters.json'])
+    assert.ok(fs.readdirSync(path.join(docs, 'img')).every(f => /^\d+\.webp$/.test(f)), 'docs/img 只能有 <卡號>.webp')
   }
+  // 追蹤檔中也不得出現 config.json 的 UID
+  let ownUid = null
+  try { ownUid = String(JSON.parse(fs.readFileSync(path.join(ROOT, 'config.json'), 'utf8')).uid || '') || null } catch {}
   const files = spawnSync('git', ['-C', ROOT, 'ls-files', '-z', '--', '.', ':!docs/img', ':!package-lock.json'], { encoding: 'utf8' }).stdout.split('\0').filter(Boolean)
   for (const f of files) {
     if (f === 'test/tos.test.mjs' || !fs.existsSync(path.join(ROOT, f))) continue
-    assert.ok(!/smallkill/i.test(fs.readFileSync(path.join(ROOT, f), 'utf8')), f + ' 含 smallkill')
+    const t = fs.readFileSync(path.join(ROOT, f), 'utf8')
+    assert.ok(!/smallkill/i.test(t), f + ' 含 smallkill')
+    if (ownUid) assert.ok(!t.includes(ownUid), f + ' 含 config.json 的 UID')
   }
 })

@@ -17,18 +17,19 @@ import { readAuth } from '../lib/auth.mjs'
 import { rawBase } from '../lib/images.mjs'
 import pin from '../lib/pin.json' with { type: 'json' }
 import { updateFromProfile } from '../lib/update.mjs'
-import { buildEmbedHtml, checkImgBase, injectPoolBase, checkPoolBase } from '../lib/embed.mjs'
+import { buildEmbedHtml, resolveImgBase, injectPoolBase, checkPoolBase } from '../lib/embed.mjs'
 import { syncPool } from '../lib/pool.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const CACHE = path.join(ROOT, '.cache')
+const CONFIG_ROOT = process.env.TOS_CONFIG_DIR || ROOT // 僅供測試:讓 config.json 與本機設定脫鉤
 const DATA = path.join(ROOT, 'data')
 const DOCS = process.env.TOS_DOCS_DIR || path.join(ROOT, 'docs') // 公開卡池站(GitHub Pages);TOS_DOCS_DIR 僅供測試
 
 let parsed, cfg
 try {
   parsed = parseArgs(process.argv.slice(2), ['offline', 'publish', 'no-images', 'refresh-monsters', 'bump-sha'], ['uid', 'slug', 'out', 'site', 'img-base', 'pool-base'])
-  cfg = loadConfig({ flags: parsed.flags, root: ROOT })
+  cfg = loadConfig({ flags: parsed.flags, root: CONFIG_ROOT })
 } catch (e) { console.error(e.message); process.exit(2) }
 const flagObj = parsed.flags
 const flags = { has: k => flagObj[k.replace(/^--/, '')] === true }
@@ -36,7 +37,7 @@ const offline = flags.has('--offline')
 const friend = cfg.slug !== null
 {
   let fileUid = null
-  try { fileUid = JSON.parse(fs.readFileSync(path.join(ROOT, 'config.json'), 'utf8')).uid } catch {}
+  try { fileUid = JSON.parse(fs.readFileSync(path.join(CONFIG_ROOT, 'config.json'), 'utf8')).uid } catch {}
   const own = String(process.env.TOS_UID ?? fileUid ?? '')
   if (!friend && flagObj.uid !== undefined && own && flagObj.uid !== own) { console.error('未指定 --slug 時 UID 只能取自 config.json/TOS_UID(避免別人的資料覆蓋主頁);朋友版請加 --slug'); process.exit(2) }
   if (friend && own && flagObj.uid === own) { console.error('朋友版的 --uid 不可與你自己的 UID 相同'); process.exit(2) }
@@ -45,7 +46,7 @@ if (friend && flags.has('--publish')) { console.error('朋友版(--slug)不會 p
 if (parsed.positional.length) { console.error('不接受命令列參數(驗證碼請走 stdin 或 TOS_AUTH)'); process.exit(2) }
 // 朋友版的卡圖網址先驗證,免得登入、抓完資料才失敗
 let imgBase = null
-if (friend) { try { imgBase = checkImgBase(cfg.imgBase) } catch (e) { console.error(e.message); process.exit(2) } }
+if (friend) { try { imgBase = resolveImgBase(cfg.imgBase, cfg.poolBase) } catch (e) { console.error(e.message); process.exit(2) } }
 let poolBase = null
 if (flags.has('--publish')) { try { poolBase = checkPoolBase(cfg.poolBase) } catch (e) { console.error(e.message); process.exit(2) } }
 const P = paths(ROOT, cfg.slug)
