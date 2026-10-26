@@ -63,3 +63,49 @@ export function aggregate(profile) {
   const cards = [...byId.values()].sort((a, b) => a.id - b.id)
   return { totalCards: raw.length, uniqueCards: cards.length, cards }
 }
+
+// ---- 在瀏覽器記住背包(localStorage)----
+// 只存彙整結果(aggregate 輸出)+ UID + 匯入時間;絕不存驗證碼或 token。storage 以參數注入,所有存取包 try/catch。
+export const STORE_KEY = 'tos-backpack:v1'
+const isInt = (n, max = 1e7) => Number.isInteger(n) && n >= 0 && n <= max
+
+// 嚴格驗證:任何多餘/缺漏/型別不符都回 null
+export function validateStored(o) {
+  if (!o || typeof o !== 'object' || Array.isArray(o)) return null
+  const keys = Object.keys(o).sort().join()
+  if (keys !== 'cards,savedAt,totalCards,uid,uniqueCards,v') return null
+  if (o.v !== 1 || typeof o.uid !== 'string' || !/^\d{5,12}$/.test(o.uid)) return null
+  if (typeof o.savedAt !== 'string' || !/^\d{4}-\d\d-\d\dT[\d:.]+Z$/.test(o.savedAt) || Number.isNaN(Date.parse(o.savedAt))) return null
+  if (!isInt(o.totalCards) || !isInt(o.uniqueCards) || !Array.isArray(o.cards) || o.cards.length > 50000 || o.cards.length !== o.uniqueCards) return null
+  const seen = new Set(); let sum = 0
+  for (const c of o.cards) {
+    if (!c || typeof c !== 'object' || Object.keys(c).sort().join() !== 'count,id,maxEnhanceLevel,maxLevel,maxSkillLevel') return null
+    if (!isInt(c.id) || !isInt(c.count, 1e6) || !isInt(c.maxLevel, 1e4) || !isInt(c.maxSkillLevel, 1e4) || !isInt(c.maxEnhanceLevel, 1e4) || seen.has(c.id)) return null
+    seen.add(c.id); sum += c.count
+  }
+  if (sum > o.totalCards) return null
+  return { uid: o.uid, savedAt: o.savedAt, totalCards: o.totalCards, uniqueCards: o.uniqueCards, cards: o.cards.map(c => ({ id: c.id, count: c.count, maxLevel: c.maxLevel, maxSkillLevel: c.maxSkillLevel, maxEnhanceLevel: c.maxEnhanceLevel })) }
+}
+
+export function saveBackpack(storage, uid, agg, now = new Date()) {
+  try {
+    const rec = { v: 1, uid: String(uid), savedAt: now.toISOString(), totalCards: agg.totalCards, uniqueCards: agg.uniqueCards, cards: agg.cards }
+    if (!validateStored(JSON.parse(JSON.stringify(rec)))) return false
+    storage.setItem(STORE_KEY, JSON.stringify(rec)); return true
+  } catch { return false }
+}
+
+// 回傳驗證過的紀錄或 null;內容無效就刪掉
+export function loadBackpack(storage) {
+  let raw
+  try { raw = storage.getItem(STORE_KEY) } catch { return null }
+  if (raw == null) return null
+  let rec = null
+  try { rec = validateStored(JSON.parse(raw)) } catch {}
+  if (!rec) clearBackpack(storage)
+  return rec
+}
+
+export function clearBackpack(storage) {
+  try { storage.removeItem(STORE_KEY); storage.removeItem('tos-lookup-uid') } catch {}
+}

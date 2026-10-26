@@ -81,7 +81,7 @@
   .btn:focus-visible,.chip:focus-visible{outline:3px solid var(--accent2);outline-offset:2px}
   #err{display:none;margin-top:10px;padding:10px 12px;border:1px solid var(--no);border-radius:12px;color:var(--no);font-size:15px}
   #err.on{display:block}
-  #res[hidden]{display:none}
+  #res[hidden],#saved[hidden],#formwrap[hidden]{display:none}
   .sr{position:absolute;left:-9999px}
 </style>
 </head>
@@ -93,9 +93,15 @@
     <ul>
       <li>資料由你的瀏覽器直接連到遊戲官方伺服器;本站不會收到你的驗證碼或背包內容。</li>
       <li>驗證碼來自遊戲內「互助檢視」,只在記憶體使用一次,不儲存、不寫入網址。</li>
+      <li>匯入後的卡片持有資料(卡號、數量、最高等級)與 UID 只存在這個瀏覽器,下次開啟免重新匯入;按「清除資料」即刪除。</li>
       <li>非官方工具,若遊戲更改 API 可能失效。</li>
     </ul>
   </div>
+  <div id="saved" class="notice" hidden>
+    <div id="savedtxt"></div>
+    <div class="btns" style="margin-top:8px"><button class="btn sec" id="reimport" type="button">重新匯入</button><button class="btn sec" id="wipe" type="button">清除資料</button></div>
+  </div>
+  <div id="formwrap">
   <form id="f" autocomplete="off">
     <label for="uid">UID(5~12 位數字)
       <input id="uid" name="uid" type="text" inputmode="numeric" pattern="[0-9]{5,12}" minlength="5" maxlength="12" required autocomplete="off" autocapitalize="off" spellcheck="false">
@@ -103,12 +109,13 @@
     <label for="code">驗證碼(遊戲內「互助檢視」)
       <input id="code" name="code" type="text" inputmode="numeric" required autocomplete="one-time-code" autocapitalize="off" spellcheck="false" maxlength="32">
     </label>
-    <label class="remember"><input id="rem" type="checkbox"> 記住 UID(只存在這個瀏覽器,不含驗證碼)</label>
+    <label class="remember"><input id="rem" type="checkbox" checked> 在這個瀏覽器記住我的背包(不含驗證碼)</label>
     <div class="btns">
       <button class="btn" id="go" type="submit">查詢</button>
-      <button class="btn sec" id="clear" type="button">清除</button>
+      <button class="btn sec" id="clear" type="button">清除資料</button>
     </div>
   </form>
+  </div>
   <div id="err" role="alert"></div>
   <div id="res" hidden>
     <input id="q" type="search" inputmode="search" enterkeyhint="search" placeholder="卡號(如 2847)或卡名(如 莫莉)" aria-label="搜尋卡號或卡名" autocomplete="off" autocapitalize="off">

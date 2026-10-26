@@ -1,10 +1,11 @@
 // 查詢頁的 UI 邏輯(獨立檔案,讓 CSP 的 script-src 只需 'self')
-import { login, getProfile, aggregate } from './lookup.js'
+import { login, getProfile, aggregate, saveBackpack, loadBackpack, clearBackpack } from './lookup.js'
 // 資料與圖片的相對路徑(部署於 docs/(與本頁同資料夾)):只讀卡池清單,不讀擁有者的背包資料
 const DATA_BASE = './', IMG = './img/'
 const $=s=>document.querySelector(s), PAGE=180;
 let OWN=new Map(), ALL=[], MONS=null, state={q:'',own:'all',att:'',race:'',star:'',shown:PAGE};
-const UID_KEY='tos-lookup-uid';
+let store=null; try{store=window.localStorage}catch{}   // 取不到 storage 時頁面照常運作(只是不記住)
+const IDLE_SUB='輸入 UID 與互助檢視驗證碼,在這個瀏覽器內查看你自己的卡片持有狀況';
 
 const norm=s=>String(s).normalize('NFKC').replace(/[\s‧·．.・]/g,'').toLowerCase();
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -111,28 +112,46 @@ $('#f').addEventListener('submit',async e=>{
     const token=await login(uid,code);
     code=''; $('#code').value='';   // 登入後立刻丟掉驗證碼
     const agg=aggregate(await getProfile(uid,token));
-    buildAll(m,agg);
-    state={q:'',own:'all',att:'',race:'',star:'',shown:PAGE}; $('#q').value='';
-    [...$('#own').children].forEach(c=>c.classList.toggle('on',c.dataset.o==='all'));
-    buildChips();
-    $('#res').hidden=false;
-    $('#sub').textContent=`持有 ${agg.uniqueCards} 種 / 共 ${agg.totalCards} 張 · 全卡池 ${ALL.length} 種`;
-    try{ if($('#rem').checked) localStorage.setItem(UID_KEY,uid); else localStorage.removeItem(UID_KEY) }catch{}
-    render();
+    let saved=false;
+    if($('#rem').checked) saved=saveBackpack(store,uid,agg); else clearBackpack(store);
+    showBackpack(m,agg,uid,saved?new Date():null,saved);
   }catch(err){
     showErr(err&&err.message?err.message:'發生未知錯誤,請稍後再試');
   }finally{
     code=''; $('#code').value=''; go.disabled=false; go.textContent='查詢';
   }
 });
-$('#clear').addEventListener('click',()=>{
-  OWN=new Map(); ALL=[]; IDX=null; state={q:'',own:'all',att:'',race:'',star:'',shown:PAGE};
-  $('#f').reset(); $('#q').value=''; $('#res').hidden=true; hideErr();
-  $('#sub').textContent='已清除。輸入 UID 與互助檢視驗證碼,在這個瀏覽器內查看你自己的卡片持有狀況';
-  try{localStorage.removeItem(UID_KEY)}catch{}
+// 顯示一份背包(來自剛匯入或 localStorage)
+function showBackpack(m,agg,uid,when,saved){
+  buildAll(m,agg);
+  state={q:'',own:'all',att:'',race:'',star:'',shown:PAGE}; $('#q').value='';
+  [...$('#own').children].forEach(c=>c.classList.toggle('on',c.dataset.o==='all'));
+  buildChips();
+  $('#res').hidden=false;
+  $('#sub').textContent=`持有 ${agg.uniqueCards} 種 / 共 ${agg.totalCards} 張 · 全卡池 ${ALL.length} 種`;
+  const d=when?when.toLocaleDateString('zh-TW'):'';
+  $('#savedtxt').textContent=(saved?`上次匯入:${d}`:'本次匯入(未儲存在瀏覽器)')+`(UID …末3碼 ${uid.slice(-3)})`;
+  $('#saved').hidden=false; $('#formwrap').hidden=true;
   render();
-});
-try{const u=localStorage.getItem(UID_KEY); if(u&&/^\d{5,12}$/.test(u)){$('#uid').value=u;$('#rem').checked=true}}catch{}
+}
+function wipe(){
+  OWN=new Map(); ALL=[]; IDX=null; state={q:'',own:'all',att:'',race:'',star:'',shown:PAGE};
+  $('#f').reset(); $('#q').value=''; $('#res').hidden=true; $('#saved').hidden=true; $('#formwrap').hidden=false; hideErr();
+  $('#sub').textContent=IDLE_SUB;
+  clearBackpack(store);
+  render();
+}
+$('#clear').addEventListener('click',wipe);
+$('#wipe').addEventListener('click',wipe);
+$('#reimport').addEventListener('click',()=>{ $('#formwrap').hidden=false; $('#code').focus() });
+// 啟動:有有效的已存背包就直接顯示,無效則丟棄
+(async()=>{
+  const rec=loadBackpack(store);
+  if(!rec)return;
+  $('#uid').value=rec.uid;
+  try{ showBackpack(await loadMonsters(),rec,rec.uid,new Date(rec.savedAt),true) }
+  catch(err){ showErr(err&&err.message?err.message:'卡池資料載入失敗') }
+})();
 
 let timer;
 $('#q').addEventListener('input',e=>{state.q=e.target.value;state.shown=PAGE;clearTimeout(timer);timer=setTimeout(render,80)});

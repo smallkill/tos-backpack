@@ -14,7 +14,7 @@ Node 20+(實測 24)、Python 3 + Pillow(轉 webp)、`npm install`(只有 acorn �
 
 ## 公開卡池站與「查詢我的背包」頁(`docs/`)
 `bin/tos-update`(非朋友版)每次執行會把 `data/monsters.json`、`data/img/`(只複製新增/變動檔)與查詢頁(`web/lookup.html` → `docs/index.html`、`web/lookup.js`、`web/lookup-app.js` → `docs/`)同步到 `docs/`,並放 `.nojekyll`。`docs/` 以 GitHub Pages 發佈(Settings → Pages → main /docs),commit/push 由人決定。
-查詢頁是純前端:任何玩家輸入自己的 UID 與互助檢視驗證碼,瀏覽器直連官方 API,在記憶體彙整後顯示全卡池(有的彩色、沒有的灰階)。驗證碼只用於登入一次,不儲存、不 log、不進網址;本站不會收到任何背包資料。非官方,遊戲改 API 可能失效。
+查詢頁是純前端:任何玩家輸入自己的 UID 與互助檢視驗證碼,瀏覽器直連官方 API,在記憶體彙整後顯示全卡池(有的彩色、沒有的灰階)。驗證碼只用於登入一次,不儲存、不 log、不進網址;本站不會收到任何背包資料。匯入結果(卡號/數量/最高等級)與 UID 預設存在使用者自己瀏覽器的 localStorage(`tos-backpack:v1`),下次開啟免重新匯入;可取消勾選,或按「清除資料」刪除。非官方,遊戲改 API 可能失效。
 本機預覽:`python3 -m http.server -d docs`。
 
 ## 取得驗證碼

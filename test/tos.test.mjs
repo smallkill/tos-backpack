@@ -445,3 +445,54 @@ test('docs/ 內查詢頁與 web/ 來源一致;docs/ 無 cards.json;git 追蹤檔
     if (ownUid) assert.ok(!t.includes(ownUid), f + ' 含 config.json 的 UID')
   }
 })
+
+// ---- 瀏覽器端記住背包 ----
+const memStore = (init = {}) => { const m = new Map(Object.entries(init)); return { m, getItem: k => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) } }
+
+test('記住背包:存/讀 roundtrip,只含彙整結果 + UID + 時間', () => {
+  const st = memStore(), agg = lookup.aggregate(profile), now = new Date('2026-10-26T01:02:03.000Z')
+  assert.equal(lookup.saveBackpack(st, '123456789', agg, now), true)
+  assert.deepEqual([...st.m.keys()], ['tos-backpack:v1'])
+  const rec = lookup.loadBackpack(st)
+  assert.deepEqual(rec, { uid: '123456789', savedAt: '2026-10-26T01:02:03.000Z', totalCards: agg.totalCards, uniqueCards: agg.uniqueCards, cards: agg.cards })
+  const raw = st.m.get('tos-backpack:v1')
+  assert.deepEqual(Object.keys(JSON.parse(raw)).sort(), ['cards', 'savedAt', 'totalCards', 'uid', 'uniqueCards', 'v'])
+  for (const secret of ['SECRET-NAME', 'SECRET-MSG', 'acquiredAt', 'token', 'auth', 'code']) assert.ok(!raw.includes(secret), secret)
+  lookup.clearBackpack(st)
+  assert.equal(lookup.loadBackpack(st), null)
+  assert.equal(st.m.size, 0)
+})
+
+test('記住背包:無效/竄改資料一律忽略並刪除', () => {
+  const good = { v: 1, uid: '123456789', savedAt: '2026-10-26T01:02:03.000Z', totalCards: 2, uniqueCards: 1, cards: [{ id: 1, count: 2, maxLevel: 5, maxSkillLevel: 1, maxEnhanceLevel: 0 }] }
+  const mut = f => { const o = structuredClone(good); f(o); return o }
+  const bads = [
+    'not json', '[]', 'null', '{}',
+    mut(o => { o.v = 2 }), mut(o => { o.uid = '12ab' }), mut(o => { o.extra = 1 }), mut(o => { o.token = 'T' }),
+    mut(o => { o.savedAt = 'yesterday' }), mut(o => { o.uniqueCards = 5 }), mut(o => { o.totalCards = 1 }),
+    mut(o => { o.cards[0].id = '1' }), mut(o => { o.cards[0].count = -1 }), mut(o => { o.cards[0].maxLevel = 1.5 }),
+    mut(o => { o.cards[0].code = 'X' }), mut(o => { o.cards = [o.cards[0], o.cards[0]]; o.uniqueCards = 2; o.totalCards = 4 }),
+  ]
+  for (const b of bads) {
+    const st = memStore({ 'tos-backpack:v1': typeof b === 'string' ? b : JSON.stringify(b), 'tos-lookup-uid': '123456789' })
+    assert.equal(lookup.loadBackpack(st), null, JSON.stringify(b))
+    assert.ok(!st.m.has('tos-backpack:v1'))
+  }
+  assert.ok(lookup.validateStored(good))
+})
+
+test('記住背包:storage 不可用時不丟例外', () => {
+  const broken = { getItem() { throw new Error('denied') }, setItem() { throw new Error('quota') }, removeItem() { throw new Error('denied') } }
+  assert.equal(lookup.saveBackpack(broken, '123456789', lookup.aggregate(profile)), false)
+  assert.equal(lookup.loadBackpack(broken), null)
+  assert.doesNotThrow(() => lookup.clearBackpack(broken))
+  assert.equal(lookup.saveBackpack(null, '123456789', lookup.aggregate(profile)), false)
+  assert.equal(lookup.loadBackpack(null), null)
+})
+
+test('lookup-app.js:儲存只經 saveBackpack,取消勾選會清除;不直接寫 localStorage', () => {
+  const app = fs.readFileSync(path.join(ROOT, 'web/lookup-app.js'), 'utf8')
+  assert.ok(!/localStorage\.setItem|sessionStorage|document\.cookie/.test(app))
+  assert.match(app, /if\(\$\('#rem'\)\.checked\) saved=saveBackpack\(store,uid,agg\); else clearBackpack\(store\)/)
+  assert.match(fs.readFileSync(path.join(ROOT, 'web/lookup.html'), 'utf8'), /id="rem" type="checkbox" checked/)
+})

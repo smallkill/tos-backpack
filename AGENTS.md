@@ -37,7 +37,8 @@
 - `--publish` 只 `git add/commit` 自己複製的 `index.html`、`cards.json`,**不 push**(push 由人決定)。`poolBase`(config.json / `TOS_POOL_BASE` / `--pool-base`)必須 https 且以 `/` 結尾,程式不內建任何擁有者網址;`--publish` 會把它以 `window.TOS_POOL_BASE` 注入 index.html。
 - **公開查詢頁(`web/lookup.*` → `docs/`)**:
   - 純前端:瀏覽器直連官方 API(CORS 已驗證),本站不經手驗證碼與背包。
-  - 驗證碼只在記憶體用於 login 一次,用完立刻清空欄位;不存 localStorage/sessionStorage(欄位為 `type=text` + `autocomplete=one-time-code` + CSS 遮罩,避免瀏覽器詢問是否儲存密碼)、不進網址、不 log(頁面不使用 `console.*`);錯誤訊息不得含驗證碼/token/URL(`lookup.js` 的 `LookupError` 只給固定中文訊息、不帶 `cause`)。僅在使用者勾選時才記住 UID(try/catch)。
+  - 驗證碼只在記憶體用於 login 一次,用完立刻清空欄位;不存 localStorage/sessionStorage(欄位為 `type=text` + `autocomplete=one-time-code` + CSS 遮罩,避免瀏覽器詢問是否儲存密碼)、不進網址、不 log(頁面不使用 `console.*`);錯誤訊息不得含驗證碼/token/URL(`lookup.js` 的 `LookupError` 只給固定中文訊息、不帶 `cause`)。
+  - **瀏覽器端記住背包**(預設勾選、可取消):只以單一 key `tos-backpack:v1` 存 `{v, uid, savedAt, totalCards, uniqueCards, cards:[{id,count,maxLevel,maxSkillLevel,maxEnhanceLevel}]}`,即 `aggregate()` 輸出 + UID + 匯入時間,別無其他;絕不存驗證碼、token、原始 profile、暱稱。讀取一律經 `loadBackpack` 嚴格驗證(欄位集合、型別、範圍、卡號不重複),無效就刪除並忽略;所有 storage 存取包 try/catch(`lookup.js` 的 `saveBackpack`/`loadBackpack`/`clearBackpack`,`lookup-app.js` 不得直接 `localStorage.setItem`),storage 不可用時頁面照常運作。取消勾選會刪除既有紀錄;「清除資料」刪除紀錄並重置頁面。隱私說明(頁面 notice)必須同步寫明資料只存在本瀏覽器。
   - 不得載入或發佈任何人的 `cards.json`;`docs/` 內不可有 cards.json。頁面與 tracked 檔案不得出現擁有者網址或帳號(測試會檢查擁有者帳號字串不得出現在追蹤檔);資料路徑只用同資料夾相對路徑 `./monsters.json`、`./img/`。
   - 必須保留 `noindex` 與 CSP meta(`connect-src 'self' https://website-api.tosgame.com`、`form-action 'none'`、`base-uri 'none'`);`script-src` 只能是 `'self'`:頁面不可有行內 `<script>` 或 `on*=` 屬性(UI 在 `lookup-app.js`,圖片失敗用 capture 的 error 監聽);`style-src 'unsafe-inline'` 因為頁面有內嵌 `<style>`。
   - POST 不加自訂 header(避免 CORS preflight)。
