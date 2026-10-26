@@ -12,6 +12,8 @@ import { login } from '../lib/api.mjs'
 import { readAuth } from '../lib/auth.mjs'
 import { Readable } from 'node:stream'
 import { spawnSync } from 'node:child_process'
+import { syncPool } from '../lib/pool.mjs'
+import { injectPoolBase } from '../lib/embed.mjs'
 import { validateSlug, parseArgs, loadConfig, paths } from '../lib/config.mjs'
 
 const tmp = () => fs.mkdtempSync(path.join(process.env.HOME, 'projects/tos-backpack/.cache/test-'))
@@ -144,7 +146,7 @@ test('tos-update 拒絕命令列參數(驗證碼不走 argv)', () => {
 
 test('tos-update --publish 遇到 git 失敗時退出碼非 0', () => {
   const d = tmp(); const site = path.join(d, 'tos-cards')
-  const r = spawnSync('node', [path.join(ROOT, 'bin/tos-update'), '--offline', '--no-images', '--publish'], { encoding: 'utf8', env: { ...process.env, TOS_SITE_DIR: site } })
+  const r = spawnSync('node', [path.join(ROOT, 'bin/tos-update'), '--offline', '--no-images', '--publish'], { encoding: 'utf8', env: { ...process.env, TOS_SITE_DIR: site, TOS_POOL_BASE: 'https://pool.example/', TOS_DOCS_DIR: path.join(d, 'docs') } })
   assert.equal(r.status, 1)
   fs.rmSync(d, { recursive: true })
 })
@@ -280,4 +282,131 @@ test('朋友版 --out 不可指到網站目錄/專案內 data、web;離線朋友
     assert.equal(ok.status, 0, ok.stderr + ok.stdout) // 不給 --uid 的離線朋友版可用
     assert.ok(fs.existsSync(path.join(d, 'out/index.html')))
   } finally { fs.rmSync(path.join(prof, 't-out.json'), { force: true }); fs.rmSync(path.join(ROOT, '.cache/users/t-out'), { recursive: true, force: true }); fs.rmSync(d, { recursive: true }) }
+})
+
+// ---- 公開「查詢我的背包」頁(web/lookup.*) ----
+const lookup = await import('../web/lookup.js')
+
+test('lookup.aggregate 與 lib/cards.mjs buildCards 的每卡欄位一致', () => {
+  const built = buildCards(profile, parseMonsterData(monsterSrc))
+  const agg = lookup.aggregate(profile)
+  const pick = ({ id, count, maxLevel, maxSkillLevel, maxEnhanceLevel }) => ({ id, count, maxLevel, maxSkillLevel, maxEnhanceLevel })
+  assert.deepEqual(agg.cards, built.cards.map(pick))
+  assert.equal(agg.totalCards, built.totalCards)
+  assert.equal(agg.uniqueCards, built.uniqueCards)
+})
+
+test('lookup.aggregate 格式不符時丟 shape 錯誤', () => {
+  for (const bad of [null, {}, { userData: {} }, { userData: { cards: 'x' } }]) {
+    assert.throws(() => lookup.aggregate(bad), e => e.kind === 'shape')
+  }
+})
+
+test('lookup.login / getProfile 呼叫正確的 URL 與方法', async () => {
+  const calls = []
+  const f = async (url, init) => { calls.push([url, init]); return { ok: true, status: 200, json: async () => (url.includes('/login') ? { token: 'TKN/1' } : { userData: { cards: [] } }) } }
+  const t = await lookup.login('123456', 'AB12 3', f)
+  assert.equal(t, 'TKN/1')
+  assert.equal(calls[0][0], 'https://website-api.tosgame.com/api/checkup/login?token=&uid=123456&auth=AB12%203')
+  assert.equal(calls[0][1].method, 'POST')
+  assert.ok(!calls[0][1].headers, '不加自訂 header(避免 CORS preflight)')
+  const p = await lookup.getProfile('123456', t, f)
+  assert.deepEqual(p, { userData: { cards: [] } })
+  assert.equal(calls[1][0], 'https://website-api.tosgame.com/api/checkup/getUserProfile?targetUid=123456&token=TKN%2F1')
+  assert.equal(calls[1][1].method, 'GET')
+})
+
+test('lookup 錯誤訊息不含驗證碼 / token / URL', async () => {
+  const CODE = 'SECRETCODE987', TOKEN = 'SECRETTOKEN654'
+  const leaks = e => [CODE, TOKEN, 'tosgame'].some(s => String(e.message).includes(s)) || /https?:\/\//.test(e.message)
+  const cases = [
+    () => lookup.login('123456', CODE, async () => ({ ok: false, status: 401 })),
+    () => lookup.login('123456', CODE, async () => ({ ok: false, status: 500 })),
+    () => lookup.login('123456', CODE, async url => { throw new TypeError('fetch failed ' + url) }),
+    () => lookup.login('123456', CODE, async () => ({ ok: true, status: 200, json: async () => ({}) })),
+    () => lookup.login('123456', CODE, async () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError('bad ' + CODE) } })),
+    () => lookup.getProfile('123456', TOKEN, async () => ({ ok: false, status: 403 })),
+    () => lookup.getProfile('123456', TOKEN, async () => ({ ok: false, status: 502 })),
+    () => lookup.getProfile('123456', TOKEN, async url => { throw new TypeError(url) }),
+  ]
+  const kinds = []
+  for (const c of cases) {
+    await assert.rejects(c(), e => { kinds.push(e.kind); assert.ok(!leaks(e), e.message); assert.equal(e.cause, undefined); return true })
+  }
+  assert.deepEqual(kinds, ['auth', 'http', 'network', 'shape', 'shape', 'auth', 'http', 'network'])
+})
+
+test('lookup.html 不引用 cards.json、不含擁有者絕對網址、有 CSP 與 noindex', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'web/lookup.html'), 'utf8')
+  assert.ok(!html.includes('cards.json'))
+  assert.ok(!/smallkill/i.test(html))
+  assert.ok(!/https?:\/\/(?!website-api\.tosgame\.com)/.test(html), '只允許官方 API 的絕對網址')
+  assert.match(html, /name="robots" content="noindex"/)
+  assert.match(html, /Content-Security-Policy[^>]*connect-src 'self' https:\/\/website-api\.tosgame\.com/)
+  assert.match(html, /type="password"[^>]*autocomplete="off"|autocomplete="off"[^>]*type="password"/)
+  assert.ok(!/localStorage\.setItem\([^)]*code/i.test(html))
+  assert.ok(!/console\./.test(html), '不 log')
+})
+
+test('syncPool 只複製新增/變動的檔,並放 .nojekyll、查詢頁,不含 cards.json', () => {
+  const d = tmp(), data = path.join(d, 'data'), docs = path.join(d, 'docs')
+  fs.mkdirSync(path.join(data, 'img'), { recursive: true })
+  fs.writeFileSync(path.join(data, 'monsters.json'), '[]'); fs.writeFileSync(path.join(data, 'cards.json'), '{"secret":1}')
+  fs.writeFileSync(path.join(data, 'img/1.webp'), 'a'); fs.writeFileSync(path.join(data, 'img/x.txt'), 'n')
+  const a = syncPool({ dataDir: data, webDir: path.join(ROOT, 'web'), docsDir: docs })
+  assert.equal(a.copied, 4) // index.html、lookup.js、monsters.json、1.webp
+  assert.ok(!fs.existsSync(path.join(docs, 'cards.json')) && !fs.existsSync(path.join(docs, 'img/x.txt')))
+  fs.rmSync(d, { recursive: true })
+})
+
+test('syncPool 重跑無變動;改一張圖只更新那張', () => {
+  const d = tmp(), data = path.join(d, 'data'), docs = path.join(d, 'docs')
+  fs.mkdirSync(path.join(data, 'img'), { recursive: true })
+  fs.writeFileSync(path.join(data, 'monsters.json'), '[]'); fs.writeFileSync(path.join(data, 'img/1.webp'), 'a'); fs.writeFileSync(path.join(data, 'img/2.webp'), 'b')
+  const web = path.join(ROOT, 'web')
+  syncPool({ dataDir: data, webDir: web, docsDir: docs })
+  assert.ok(fs.existsSync(path.join(docs, '.nojekyll')))
+  assert.deepEqual(fs.readdirSync(docs).sort(), ['.nojekyll', 'img', 'index.html', 'lookup.js', 'monsters.json'])
+  assert.equal(syncPool({ dataDir: data, webDir: web, docsDir: docs }).copied, 0)
+  fs.writeFileSync(path.join(data, 'img/2.webp'), 'bb')
+  assert.equal(syncPool({ dataDir: data, webDir: web, docsDir: docs }).copied, 1)
+  assert.equal(fs.readFileSync(path.join(docs, 'img/2.webp'), 'utf8'), 'bb')
+  fs.rmSync(d, { recursive: true })
+})
+
+test('poolBase:旗標 > 環境變數 > config.json;injectPoolBase 驗證 https 與結尾斜線', () => {
+  const d = tmp()
+  assert.equal(loadConfig({ flags: {}, env: {}, root: d }).poolBase, null)
+  fs.writeFileSync(path.join(d, 'config.json'), JSON.stringify({ poolBase: 'https://file/' }))
+  assert.equal(loadConfig({ flags: {}, env: {}, root: d }).poolBase, 'https://file/')
+  assert.equal(loadConfig({ flags: {}, env: { TOS_POOL_BASE: 'https://env/' }, root: d }).poolBase, 'https://env/')
+  assert.equal(loadConfig({ flags: { 'pool-base': 'https://flag/' }, env: { TOS_POOL_BASE: 'https://env/' }, root: d }).poolBase, 'https://flag/')
+  const html = injectPoolBase('<head></head><script>x</script>', 'https://p.example/pool/')
+  assert.match(html, /<script>window\.TOS_POOL_BASE="https:\/\/p\.example\/pool\/"<\/script>\n<script>x/)
+  for (const bad of [null, '', 'http://x/', 'https://x', 'https://x/"<']) assert.throws(() => injectPoolBase('<script>', bad))
+  fs.rmSync(d, { recursive: true })
+})
+
+test('web/index.html 的資料基底來自 TOS_POOL_BASE;--publish 缺 poolBase 退出碼 2', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'web/index.html'), 'utf8')
+  assert.match(html, /POOL\+'monsters\.json'/)
+  assert.match(html, /POOL\+'img\/'/)
+  assert.match(html, /fetch\('cards\.json'\)/)
+  const r = spawnSync('node', [path.join(ROOT, 'bin/tos-update'), '--offline', '--no-images', '--publish'], { encoding: 'utf8', env: { ...process.env, TOS_POOL_BASE: '', TOS_SITE_DIR: '/nonexistent-x/y', TOS_DOCS_DIR: path.join(tmp(), 'docs') } })
+  // config.json 可能已有 poolBase:此時改驗不 crash;無 poolBase 時必為 2
+  if (!/poolBase|pool-base/.test(fs.readFileSync(path.join(ROOT, 'config.json'), 'utf8'))) assert.equal(r.status, 2)
+})
+
+test('docs/ 內查詢頁與 web/ 來源一致;docs/ 無 cards.json;git 追蹤檔不含 smallkill', () => {
+  const docs = path.join(ROOT, 'docs')
+  if (fs.existsSync(docs)) {
+    assert.ok(!fs.existsSync(path.join(docs, 'cards.json')))
+    assert.equal(fs.readFileSync(path.join(docs, 'index.html'), 'utf8'), fs.readFileSync(path.join(ROOT, 'web/lookup.html'), 'utf8'))
+    assert.equal(fs.readFileSync(path.join(docs, 'lookup.js'), 'utf8'), fs.readFileSync(path.join(ROOT, 'web/lookup.js'), 'utf8'))
+  }
+  const files = spawnSync('git', ['-C', ROOT, 'ls-files', '-z', '--', '.', ':!docs/img', ':!package-lock.json'], { encoding: 'utf8' }).stdout.split('\0').filter(Boolean)
+  for (const f of files) {
+    if (f === 'test/tos.test.mjs' || !fs.existsSync(path.join(ROOT, f))) continue
+    assert.ok(!/smallkill/i.test(fs.readFileSync(path.join(ROOT, f), 'utf8')), f + ' 含 smallkill')
+  }
 })

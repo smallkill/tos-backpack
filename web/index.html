@@ -87,6 +87,7 @@
 
 <script>
 const $=s=>document.querySelector(s), PAGE=180;
+const POOL=window.TOS_POOL_BASE||'./'; // 共用卡池(monsters.json、img/)的基底網址;--publish 時注入
 let OWN=new Map(), ALL=[], META={}, state={q:'',own:'all',att:'',race:'',star:'',shown:PAGE};
 
 const norm=s=>String(s).normalize('NFKC').replace(/[\s‧·．.・]/g,'').toLowerCase();
@@ -95,7 +96,7 @@ const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'
 async function init(){
   try{
     const E=window.TOS_EMBED;
-    const [c,m]=E?[E.cards,E.monsters]:await Promise.all([fetch('cards.json').then(r=>r.json()),fetch('monsters.json').then(r=>r.json())]);
+    const [c,m]=E?[E.cards,E.monsters]:await Promise.all([fetch('cards.json').then(r=>r.json()),fetch(POOL+'monsters.json').then(r=>r.json())]);
     META=c; c.cards.forEach(x=>OWN.set(x.id,x));
     const seen=new Set();
     ALL=m.map(([id,name,att,race,star])=>{seen.add(id);return{id,name,att,race,star,n:norm(name),o:OWN.get(id)||null}});
@@ -120,7 +121,7 @@ function statusHtml(x){
   if(!x.o) return '❌ 沒有';
   const o=x.o; return `✅ 有 ×${o.count}(最高 Lv${o.maxLevel})`;
 }
-const IMG=(window.TOS_EMBED&&window.TOS_EMBED.imgBase)||'img/';
+const IMG=(window.TOS_EMBED&&window.TOS_EMBED.imgBase)||POOL+'img/';
 const PH="onerror=\"this.outerHTML='<div class=ph>?</div>'\"";
 function imgHtml(x,w){
   return `<img loading="lazy" decoding="async" width="${w}" height="${w}" src="${esc(IMG)}${esc(x.id)}.webp" alt="" class="${x.o?'':'gray'}" ${PH}>`;

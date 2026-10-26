@@ -17,15 +17,17 @@ import { readAuth } from '../lib/auth.mjs'
 import { rawBase } from '../lib/images.mjs'
 import pin from '../lib/pin.json' with { type: 'json' }
 import { updateFromProfile } from '../lib/update.mjs'
-import { buildEmbedHtml, checkImgBase } from '../lib/embed.mjs'
+import { buildEmbedHtml, checkImgBase, injectPoolBase, checkPoolBase } from '../lib/embed.mjs'
+import { syncPool } from '../lib/pool.mjs'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const CACHE = path.join(ROOT, '.cache')
 const DATA = path.join(ROOT, 'data')
+const DOCS = process.env.TOS_DOCS_DIR || path.join(ROOT, 'docs') // 公開卡池站(GitHub Pages);TOS_DOCS_DIR 僅供測試
 
 let parsed, cfg
 try {
-  parsed = parseArgs(process.argv.slice(2), ['offline', 'publish', 'no-images', 'refresh-monsters', 'bump-sha'], ['uid', 'slug', 'out', 'site', 'img-base'])
+  parsed = parseArgs(process.argv.slice(2), ['offline', 'publish', 'no-images', 'refresh-monsters', 'bump-sha'], ['uid', 'slug', 'out', 'site', 'img-base', 'pool-base'])
   cfg = loadConfig({ flags: parsed.flags, root: ROOT })
 } catch (e) { console.error(e.message); process.exit(2) }
 const flagObj = parsed.flags
@@ -44,6 +46,8 @@ if (parsed.positional.length) { console.error('不接受命令列參數(驗證�
 // 朋友版的卡圖網址先驗證,免得登入、抓完資料才失敗
 let imgBase = null
 if (friend) { try { imgBase = checkImgBase(cfg.imgBase) } catch (e) { console.error(e.message); process.exit(2) } }
+let poolBase = null
+if (flags.has('--publish')) { try { poolBase = checkPoolBase(cfg.poolBase) } catch (e) { console.error(e.message); process.exit(2) } }
 const P = paths(ROOT, cfg.slug)
 
 if (flags.has('--bump-sha')) {
@@ -106,22 +110,25 @@ if (friend) {
   log(`朋友版:${path.join(outDir, 'index.html')}(${(html.length / 1024).toFixed(0)} KB,卡圖載入自 ${imgBase})`)
 }
 
+if (!friend) {
+  const st = syncPool({ dataDir: DATA, webDir: path.join(ROOT, 'web'), docsDir: DOCS })
+  log(`卡池站 ${path.relative(ROOT, DOCS) || DOCS}:更新 ${st.copied} 個檔、未變 ${st.unchanged} 個(monsters.json、img/、查詢頁;請自行 commit/push)`)
+}
+
 if (flags.has('--publish')) {
   const SITE = cfg.siteDir
   if (!SITE) { console.error('--publish 需要網站目錄:--site <目錄>、TOS_SITE_DIR 或 config.json 的 siteDir'); process.exit(2) }
   fs.mkdirSync(SITE, { recursive: true })
-  fs.copyFileSync(path.join(ROOT, 'web/index.html'), path.join(SITE, 'index.html'))
+  // 只複製自己的頁面與背包;monsters.json / img/ 改由 poolBase 指向的共用卡池站提供
+  fs.writeFileSync(path.join(SITE, 'index.html'), injectPoolBase(fs.readFileSync(path.join(ROOT, 'web/index.html'), 'utf8'), poolBase))
   fs.copyFileSync(path.join(P.cardsDir, 'cards.json'), path.join(SITE, 'cards.json'))
-  // 卡池清單與卡圖
-  fs.copyFileSync(path.join(DATA, 'monsters.json'), path.join(SITE, 'monsters.json'))
-  if (fs.existsSync(path.join(DATA, 'img'))) fs.cpSync(path.join(DATA, 'img'), path.join(SITE, 'img'), { recursive: true })
   const git = (...a) => spawnSync('git', ['-C', SITE, ...a], { encoding: 'utf8' })
-  const SCOPE = ['index.html', 'cards.json', 'monsters.json', 'img']
+  const SCOPE = ['index.html', 'cards.json']
   const a = git('add', '--', ...SCOPE)
   if (a.status !== 0) { console.error('git add 失敗: ' + a.stderr); process.exit(1) }
   const c = git('commit', '-m', `tos-cards: 更新資料 ${out.updatedAt}(${out.uniqueCards} 種 / ${out.totalCards} 張)`, '--', ...SCOPE)
   if (c.status !== 0) {
-    if (/nothing to commit|no changes added/.test(c.stdout + c.stderr)) log('資料無變動,沒有新 commit')
+    if (/nothing (added )?to commit|no changes added/.test(c.stdout + c.stderr)) log('資料無變動,沒有新 commit')
     else { console.error('git commit 失敗: ' + (c.stderr || c.stdout)); process.exit(1) }
   } else log(c.stdout.trim().split('\n')[0] + '\n(只 commit,未 push)')
 }

@@ -1,5 +1,6 @@
 {
   "uid": "123456789",
   "siteDir": "~/path/to/your/site/tos-cards",
-  "imgBase": "https://<你的網站>/tos-cards/img/"
+  "imgBase": "https://<你的網站>/tos-cards/img/",
+  "poolBase": "https://<共用卡池站>/"
 }

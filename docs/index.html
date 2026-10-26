@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self'; connect-src 'self' https://website-api.tosgame.com; form-action 'none'; base-uri 'none'">
+<meta name="referrer" content="no-referrer">
+<title>神魔之塔 查詢我的背包</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --line:#2a2f3a;
+    --txt:#e8eaed; --dim:#9aa3b2; --accent:#e60012; --accent2:#ffd400;
+    --ok:#3ecf8e; --no:#ff6b6b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font-size:17px;
+    font-family:"Noto Sans TC",system-ui,-apple-system,"Segoe UI",sans-serif;}
+  header{position:sticky;top:0;z-index:20;background:rgba(15,17,21,.96);
+    backdrop-filter:blur(8px);border-bottom:1px solid var(--line);padding:12px 16px}
+  .wrap{max-width:860px;margin:0 auto}
+  .back{display:inline-block;color:var(--dim);font-size:13px;text-decoration:none}
+  h1{margin:2px 0 0;font-size:21px}
+  h1 span{color:var(--accent2)}
+  .sub{color:var(--dim);font-size:13px;margin-top:2px}
+  #q{width:100%;margin-top:10px;background:var(--panel2);border:2px solid var(--line);
+    color:var(--txt);border-radius:12px;padding:14px 16px;font-size:20px;outline:none}
+  #q:focus{border-color:var(--accent2)}
+  .row{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;align-items:center}
+  .lbl{color:var(--dim);font-size:13px;margin-right:2px}
+  .chip{background:var(--panel2);border:1px solid var(--line);color:var(--dim);
+    border-radius:999px;padding:7px 13px;font-size:15px;cursor:pointer;user-select:none}
+  .chip.on{background:var(--accent2);border-color:var(--accent2);color:#000;font-weight:700}
+  details.flt summary{cursor:pointer;color:var(--dim);font-size:14px;margin-top:10px}
+  .hero{max-width:860px;margin:14px auto 0;padding:0 12px}
+  .big{border-radius:16px;padding:16px;display:flex;gap:14px;align-items:center;border:2px solid var(--line);background:var(--panel)}
+  .big.yes{border-color:var(--ok)} .big.no{border-color:var(--no)}
+  .big img,.big .ph{width:96px;height:96px;border-radius:12px;background:#0b0d11;flex:none;object-fit:contain}
+  .big .st{font-size:26px;font-weight:800;margin-top:4px}
+  .big.yes .st{color:var(--ok)} .big.no .st{color:var(--no)}
+  .big .nm{font-size:20px;font-weight:700;line-height:1.3}
+  .info{color:var(--dim);font-size:14px;margin-top:3px}
+  .count{max-width:860px;margin:14px auto 4px;padding:0 16px;color:var(--dim);font-size:14px}
+  #list{max-width:860px;margin:0 auto;padding:0 12px 20px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(60px,1fr));gap:6px;margin-top:8px}
+  .cell{position:relative;display:block;padding:0;border:2px solid transparent;border-radius:10px;background:#0b0d11;
+    aspect-ratio:1/1;cursor:pointer;overflow:hidden;font:inherit;color:inherit}
+  .cell.own{border-color:var(--ok)}
+  .cell:focus-visible,.cell.sel{outline:3px solid var(--accent2);outline-offset:1px}
+  .cell img{width:100%;height:100%;object-fit:contain;display:block}
+  .cell .ph{width:100%;height:100%}
+  .gray{filter:grayscale(1);opacity:.5}
+  .cell .n{position:absolute;right:2px;bottom:2px;background:rgba(0,0,0,.78);color:var(--ok);font-size:11px;font-weight:800;
+    line-height:1;padding:2px 4px;border-radius:6px}
+  #pop{position:fixed;z-index:60;display:none;background:var(--panel);border:2px solid var(--line);border-radius:14px;
+    padding:12px 14px;box-shadow:0 8px 30px rgba(0,0,0,.6);width:min(280px,calc(100vw - 24px));pointer-events:none}
+  #pop.on{display:block} #pop.yes{border-color:var(--ok)} #pop.no{border-color:var(--no)}
+  #pop .id{color:var(--accent2);font-size:13px;font-weight:700} #pop .nm{font-size:18px;font-weight:700;line-height:1.3;word-break:break-all}
+  #pop .st{font-size:17px;font-weight:800;margin-top:4px} #pop.yes .st{color:var(--ok)} #pop.no .st{color:var(--no)}
+  @media (max-width:600px){#pop{left:12px!important;right:12px;bottom:12px;top:auto!important;width:auto}}
+  .ph{display:flex;align-items:center;justify-content:center;color:#404757;font-size:22px}
+  .att{display:inline-block;padding:0 6px;border-radius:5px;background:var(--panel2);color:var(--txt);font-size:12px;margin-right:4px}
+  button.more{display:block;margin:14px auto;background:var(--panel2);color:var(--txt);border:1px solid var(--line);
+    border-radius:12px;padding:14px 28px;font-size:17px;cursor:pointer}
+  .empty{text-align:center;color:var(--dim);padding:40px 0}
+  footer{max-width:860px;margin:0 auto;padding:10px 16px 40px;color:var(--dim);font-size:12px}
+  .notice{margin:10px 0 0;padding:10px 12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;color:var(--dim);font-size:13px;line-height:1.6}
+  .notice ul{margin:4px 0 0;padding-left:18px}
+  form{margin-top:10px;display:grid;gap:10px}
+  form label{display:block;color:var(--dim);font-size:13px}
+  form input[type=text],form input[type=password]{width:100%;margin-top:4px;background:var(--panel2);border:2px solid var(--line);
+    color:var(--txt);border-radius:12px;padding:12px 14px;font-size:20px;outline:none;letter-spacing:.05em}
+  form input:focus{border-color:var(--accent2)}
+  .remember{display:flex;gap:8px;align-items:center;font-size:14px}
+  .remember input{width:20px;height:20px}
+  .btns{display:flex;gap:8px;flex-wrap:wrap}
+  .btn{background:var(--accent2);color:#000;border:0;border-radius:12px;padding:13px 22px;font-size:17px;font-weight:700;cursor:pointer;min-height:48px}
+  .btn.sec{background:var(--panel2);color:var(--txt);border:1px solid var(--line);font-weight:400}
+  .btn:disabled{opacity:.5;cursor:default}
+  .btn:focus-visible,.chip:focus-visible{outline:3px solid var(--accent2);outline-offset:2px}
+  #err{display:none;margin-top:10px;padding:10px 12px;border:1px solid var(--no);border-radius:12px;color:var(--no);font-size:15px}
+  #err.on{display:block}
+  #res[hidden]{display:none}
+  .sr{position:absolute;left:-9999px}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1>神魔之塔 <span>查詢我的背包</span></h1>
+  <div class="sub" id="sub">輸入 UID 與互助檢視驗證碼,在這個瀏覽器內查看你自己的卡片持有狀況</div>
+  <div class="notice">
+    <ul>
+      <li>資料由你的瀏覽器直接連到遊戲官方伺服器;本站不會收到你的驗證碼或背包內容。</li>
+      <li>驗證碼來自遊戲內「互助檢視」,只在記憶體使用一次,不儲存、不寫入網址。</li>
+      <li>非官方工具,若遊戲更改 API 可能失效。</li>
+    </ul>
+  </div>
+  <form id="f" autocomplete="off">
+    <label for="uid">UID(5~12 位數字)
+      <input id="uid" name="uid" type="text" inputmode="numeric" pattern="[0-9]{5,12}" minlength="5" maxlength="12" required autocomplete="off" autocapitalize="off" spellcheck="false">
+    </label>
+    <label for="code">驗證碼(遊戲內「互助檢視」)
+      <input id="code" name="code" type="password" inputmode="numeric" required autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="32">
+    </label>
+    <label class="remember"><input id="rem" type="checkbox"> 記住 UID(只存在這個瀏覽器,不含驗證碼)</label>
+    <div class="btns">
+      <button class="btn" id="go" type="submit">查詢</button>
+      <button class="btn sec" id="clear" type="button">清除</button>
+    </div>
+  </form>
+  <div id="err" role="alert"></div>
+  <div id="res" hidden>
+    <input id="q" type="search" inputmode="search" enterkeyhint="search" placeholder="卡號(如 2847)或卡名(如 莫莉)" aria-label="搜尋卡號或卡名" autocomplete="off" autocapitalize="off">
+    <div class="row" id="own" role="group" aria-label="持有篩選">
+      <button type="button" class="chip on" data-o="all">全部</button><button type="button" class="chip" data-o="yes">✅ 有</button><button type="button" class="chip" data-o="no">❌ 沒有</button>
+    </div>
+    <details class="flt"><summary>篩選:屬性 / 種族 / 星數</summary>
+      <div class="row"><span class="lbl">屬性</span><span id="fa"></span></div>
+      <div class="row"><span class="lbl">種族</span><span id="fr"></span></div>
+      <div class="row"><span class="lbl">星數</span><span id="fs"></span></div>
+    </details>
+  </div>
+</div></header>
+<div class="hero" id="hero"></div>
+<div class="count" id="count" aria-live="polite"></div>
+<div id="list"></div>
+<div id="pop"></div>
+<footer>卡名與圖片來源 tinghan33704/tos-tools。圖片版權屬 Madhead。</footer>
+
+<script type="module">
+import { login, getProfile, aggregate } from './lookup.js'
+// 資料與圖片的相對路徑(部署於 docs/(與本頁同資料夾)):只讀卡池清單,不讀擁有者的背包資料
+const DATA_BASE = './', IMG = './img/'
+const $=s=>document.querySelector(s), PAGE=180;
+let OWN=new Map(), ALL=[], MONS=null, state={q:'',own:'all',att:'',race:'',star:'',shown:PAGE};
+const UID_KEY='tos-lookup-uid';
+
+const norm=s=>String(s).normalize('NFKC').replace(/[\s‧·．.・]/g,'').toLowerCase();
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function showErr(m){const e=$('#err');e.textContent=m;e.classList.add('on')}
+function hideErr(){const e=$('#err');e.textContent='';e.classList.remove('on')}
+
+async function loadMonsters(){
+  if(MONS)return MONS;
+  let r;
+  try{r=await fetch(DATA_BASE+'monsters.json')}catch{throw new Error('卡池資料載入失敗(網路問題),請稍後再試')}
+  if(!r.ok)throw new Error('卡池資料載入失敗(HTTP '+r.status+')');
+  try{MONS=await r.json()}catch{throw new Error('卡池資料格式錯誤')}
+  return MONS;
+}
+function buildAll(m,agg){
+  OWN=new Map(agg.cards.map(x=>[x.id,x]));
+  const seen=new Set();
+  ALL=m.map(([id,name,att,race,star])=>{seen.add(id);return{id,name,att,race,star,n:norm(name),o:OWN.get(id)||null}});
+  agg.cards.forEach(x=>{ if(!seen.has(x.id)) ALL.push({id:x.id,name:'未知卡號',att:'',race:'',star:0,n:norm('未知卡號'),o:x}) });
+  ALL.sort((a,b)=>a.id-b.id); IDX=null;
+}
+function chipSet(el,key,vals,fmt){
+  el.innerHTML=['',...vals].map(v=>`<button type="button" class="chip ${state[key]===String(v)?'on':''}" data-k="${key}" data-v="${esc(v)}">${v===''?'全部':esc(fmt(v))}</button>`).join('');
+}
+function buildChips(){
+  const uniq=k=>[...new Set(ALL.map(x=>x[k]).filter(v=>v!==''&&v!==0))];
+  chipSet($('#fa'),'att',['火','水','木','光','暗'].filter(a=>uniq('att').includes(a)),v=>v);
+  chipSet($('#fr'),'race',uniq('race').sort(),v=>v);
+  chipSet($('#fs'),'star',uniq('star').sort((a,b)=>a-b),v=>v+'★');
+}
+function statusHtml(x){
+  if(!x.o) return '❌ 沒有';
+  const o=x.o; return `✅ 有 ×${o.count}(最高 Lv${o.maxLevel})`;
+}
+const PH="onerror=\"this.outerHTML='<div class=ph>?</div>'\"";
+function imgHtml(x,w){
+  return `<img loading="lazy" decoding="async" width="${w}" height="${w}" src="${esc(IMG)}${esc(x.id)}.webp" alt="" class="${x.o?'':'gray'}" ${PH}>`;
+}
+function infoLine(x){
+  const a=[]; if(x.att)a.push(`<span class="att">${esc(x.att)}</span>`); if(x.race)a.push(esc(x.race)); if(x.star)a.push(esc(x.star)+'★');
+  return a.join(' ');
+}
+function item(x){
+  const lab=`${x.id} ${x.name} ${x.o?'有':'沒有'}`;
+  return `<button type="button" class="cell ${x.o?'own':'no'}" data-id="${esc(x.id)}" aria-label="${esc(lab)}" aria-describedby="pop">${imgHtml(x,64)}${x.o?`<span class="n">×${esc(x.o.count)}</span>`:''}</button>`;
+}
+function popHtml(x){
+  const o=x.o, extra=o?`<div class="info">技能 Lv${esc(o.maxSkillLevel)} · 強化 ${esc(o.maxEnhanceLevel)}</div>`:'';
+  return `<div class="id">No.${esc(x.id)}</div><div class="nm">${esc(x.name)}</div><div class="info">${infoLine(x)}</div><div class="st">${esc(statusHtml(x))}</div>${extra}`;
+}
+function rawQ(){return state.q.normalize("NFKC").trim()}
+function search(){
+  const raw=rawQ();
+  let list=ALL, exact=null;
+  if(raw){
+    if(/^\d+$/.test(raw)){
+      const d=raw.replace(/^0+(?=\d)/,''), n=+d; exact=ALL.find(x=>x.id===n)||null;
+      list=ALL.filter(x=>String(x.id).startsWith(d));
+      list.sort((a,b)=>(b.id===n)-(a.id===n)||a.id-b.id);
+    }else{
+      const toks=raw.split(/\s+/).map(norm).filter(Boolean);
+      list=ALL.filter(x=>toks.every(t=>x.n.includes(t)));
+    }
+  }
+  list=list.filter(x=>
+    (state.own==='all'||(state.own==='yes')===!!x.o)&&
+    (!state.att||x.att===state.att)&&(!state.race||x.race===state.race)&&(!state.star||x.star===+state.star));
+  return {list,exact};
+}
+function render(){
+  hidePop();
+  const hero=$('#hero'); hero.innerHTML='';
+  if(!ALL.length){$('#count').textContent='';$('#list').innerHTML='';return}
+  const {list,exact}=search();
+  if(/^\d+$/.test(rawQ())){
+    const n=+rawQ();
+    if(exact){
+      hero.innerHTML=`<div class="big ${exact.o?'yes':'no'}">${imgHtml(exact,96)}
+        <div style="min-width:0"><div class="id" style="color:var(--accent2);font-weight:700">No.${exact.id}</div>
+        <div class="nm">${esc(exact.name)}</div><div class="info">${infoLine(exact)}</div>
+        <div class="st">${esc(statusHtml(exact))}</div></div></div>`;
+    }else{
+      hero.innerHTML=`<div class="big no"><div class="ph">?</div><div><div class="nm">No.${esc(n)}</div><div class="info">卡池資料中查無此卡號</div><div class="st">❌ 沒有</div></div></div>`;
+    }
+  }
+  $('#count').textContent=`符合 ${list.length} 種`+(list.length>state.shown?`(顯示前 ${state.shown} 筆)`:'');
+  const el=$('#list');
+  if(!list.length){el.innerHTML='<div class="empty">找不到符合的卡片</div>';return}
+  el.innerHTML='<div class="grid">'+list.slice(0,state.shown).map(item).join('')+'</div>'+
+    (list.length>state.shown?'<button class="more" id="more">再顯示 '+Math.min(PAGE,list.length-state.shown)+' 筆</button>':'');
+}
+
+// ---- 表單 ----
+$('#f').addEventListener('submit',async e=>{
+  e.preventDefault(); hideErr();
+  const uid=$('#uid').value.trim(); let code=$('#code').value.trim();
+  if(!/^\d{5,12}$/.test(uid)){showErr('UID 必須是 5~12 位數字');return}
+  if(!code){showErr('請輸入驗證碼');return}
+  const go=$('#go'); go.disabled=true; go.textContent='查詢中…';
+  try{
+    const m=await loadMonsters();
+    const token=await login(uid,code);
+    code=''; $('#code').value='';   // 登入後立刻丟掉驗證碼
+    const agg=aggregate(await getProfile(uid,token));
+    buildAll(m,agg);
+    state={q:'',own:'all',att:'',race:'',star:'',shown:PAGE}; $('#q').value='';
+    [...$('#own').children].forEach(c=>c.classList.toggle('on',c.dataset.o==='all'));
+    buildChips();
+    $('#res').hidden=false;
+    $('#sub').textContent=`持有 ${agg.uniqueCards} 種 / 共 ${agg.totalCards} 張 · 全卡池 ${ALL.length} 種`;
+    try{ if($('#rem').checked) localStorage.setItem(UID_KEY,uid); else localStorage.removeItem(UID_KEY) }catch{}
+    render();
+  }catch(err){
+    showErr(err&&err.message?err.message:'發生未知錯誤,請稍後再試');
+  }finally{
+    code=''; $('#code').value=''; go.disabled=false; go.textContent='查詢';
+  }
+});
+$('#clear').addEventListener('click',()=>{
+  OWN=new Map(); ALL=[]; IDX=null; state={q:'',own:'all',att:'',race:'',star:'',shown:PAGE};
+  $('#f').reset(); $('#q').value=''; $('#res').hidden=true; hideErr();
+  $('#sub').textContent='已清除。輸入 UID 與互助檢視驗證碼,在這個瀏覽器內查看你自己的卡片持有狀況';
+  try{localStorage.removeItem(UID_KEY)}catch{}
+  render();
+});
+try{const u=localStorage.getItem(UID_KEY); if(u&&/^\d{5,12}$/.test(u)){$('#uid').value=u;$('#rem').checked=true}}catch{}
+
+let timer;
+$('#q').addEventListener('input',e=>{state.q=e.target.value;state.shown=PAGE;clearTimeout(timer);timer=setTimeout(render,80)});
+document.addEventListener('click',e=>{
+  const t=e.target;
+  if(t.id==='more'){state.shown+=PAGE;render();return}
+  if(t.dataset&&t.dataset.o){state.own=t.dataset.o;[...$('#own').children].forEach(c=>c.classList.toggle('on',c===t));state.shown=PAGE;render();return}
+  if(t.dataset&&t.dataset.k){state[t.dataset.k]=t.dataset.v;t.parentElement.querySelectorAll('.chip').forEach(c=>c.classList.toggle('on',c===t));state.shown=PAGE;render()}
+});
+// ---- 浮動詳細卡:桌機 hover / 鍵盤 focus / 手機 tap ----
+const pop=$('#pop'); let pinned=null;
+let IDX=null;const byId=id=>(IDX||(IDX=new Map(ALL.map(x=>[x.id,x])))).get(+id);
+function showPop(cell){
+  const x=byId(cell.dataset.id); if(!x)return;
+  pop.className='on '+(x.o?'yes':'no'); pop.innerHTML=popHtml(x);
+  const r=cell.getBoundingClientRect(), w=pop.offsetWidth, h=pop.offsetHeight;
+  let l=Math.min(Math.max(8,r.left+r.width/2-w/2),innerWidth-w-8);
+  let t=r.top-h-8; if(t<8)t=r.bottom+8;
+  pop.style.left=l+'px'; pop.style.top=t+'px';
+}
+function hidePop(){pop.className='';pinned&&pinned.classList.remove('sel');pinned=null}
+const cellOf=e=>e.target.closest&&e.target.closest('.cell');
+const canHover=matchMedia('(hover:hover)').matches;
+$('#list').addEventListener('mouseover',e=>{const c=cellOf(e);if(c&&canHover&&!pinned)showPop(c)});
+$('#list').addEventListener('mouseout',e=>{const c=cellOf(e);if(c&&canHover&&!pinned&&!c.contains(e.relatedTarget))hidePop()});
+$('#list').addEventListener('focusin',e=>{const c=cellOf(e);if(!c)return;if(pinned&&pinned!==c)hidePop();if(!pinned)showPop(c)});
+$('#list').addEventListener('focusout',e=>{if(cellOf(e)&&!pinned)hidePop()});
+document.addEventListener('click',e=>{
+  const c=cellOf(e);
+  if(c){ if(pinned===c){hidePop();return} hidePop(); pinned=c; c.classList.add('sel'); showPop(c); return }
+  hidePop();
+},true);
+document.addEventListener('keydown',e=>{if(e.key==='Escape')hidePop()});
+addEventListener('scroll',()=>{if(!canHover)hidePop();else if(pinned)showPop(pinned)},{passive:true});
+</script>
+</body>
+</html>
