@@ -1,5 +1,7 @@
 // 查詢頁的 UI 邏輯(獨立檔案,讓 CSP 的 script-src 只需 'self')
 import { login, getProfile, aggregate, saveBackpack, loadBackpack, clearBackpack } from './lookup.js'
+// 防點擊劫持:只有在最上層視窗才移除 lookup.html 的隱藏樣式;被嵌入 iframe 時整頁維持不顯示
+if(window.top===window.self)document.getElementById('acj')?.remove();
 // 資料與圖片的相對路徑(部署於 docs/(與本頁同資料夾)):只讀卡池清單,不讀擁有者的背包資料
 const DATA_BASE = './', IMG = './img/'
 const $=s=>document.querySelector(s), PAGE=180;

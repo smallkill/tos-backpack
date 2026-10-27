@@ -6,6 +6,8 @@
 <meta name="robots" content="noindex">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self'; connect-src 'self' https://website-api.tosgame.com; form-action 'none'; base-uri 'none'">
 <meta name="referrer" content="no-referrer">
+<!-- 防點擊劫持:GitHub Pages 無法送 frame-ancestors header(meta CSP 不支援),先隱藏整頁,lookup-app.js 確認沒被嵌入 iframe 才顯示 -->
+<style id="acj">body{display:none!important}</style>
 <title>神魔之塔 查詢我的背包</title>
 <style>
   :root{
