@@ -16,7 +16,7 @@ import { syncPool } from '../lib/pool.mjs'
 import { injectPoolBase, resolveImgBase } from '../lib/embed.mjs'
 import { validateSlug, parseArgs, loadConfig, paths } from '../lib/config.mjs'
 
-const tmp = () => fs.mkdtempSync(path.join(process.env.HOME, 'projects/tos-backpack/.cache/test-'))
+const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'tos-backpack-test-'))
 
 test('parseMonsterData 正規解析 TS 檔', () => {
   const m = parseMonsterData(monsterSrc)
@@ -152,8 +152,7 @@ test('tos-update --publish 遇到 git 失敗時退出碼非 0', () => {
 })
 
 test('index.html 的 esc 會跳脫單引號與 data-v/種族/屬性', () => {
-  const hf = path.join(process.env.HOME, 'projects/guide/tos-cards/index.html')
-  if (!fs.existsSync(hf)) return
+  const hf = path.join(ROOT, 'web/index.html')
   const html = fs.readFileSync(hf, 'utf8')
   const m = html.match(/const esc=(.*);\n/)
   const esc = new Function('return ' + m[1])()
@@ -495,4 +494,34 @@ test('lookup-app.js:儲存只經 saveBackpack,取消勾選會清除;不直接寫
   assert.ok(!/localStorage\.setItem|sessionStorage|document\.cookie/.test(app))
   assert.match(app, /if\(\$\('#rem'\)\.checked\) saved=saveBackpack\(store,uid,agg\); else clearBackpack\(store\)/)
   assert.match(fs.readFileSync(path.join(ROOT, 'web/lookup.html'), 'utf8'), /id="rem" type="checkbox" checked/)
+})
+
+test('查詢頁防點擊劫持:先隱藏整頁,只在最上層視窗才顯示', () => {
+  const html = fs.readFileSync(path.join(ROOT, 'web/lookup.html'), 'utf8')
+  assert.match(html, /<style id="acj">body\{display:none!important\}<\/style>/)
+  const js = fs.readFileSync(path.join(ROOT, 'web/lookup-app.js'), 'utf8')
+  assert.match(js, /if\(window\.top===window\.self\)document\.getElementById\('acj'\)\?\.remove\(\)/)
+})
+
+test('自己的頁面與朋友版注入 CSP:圖片/資料只允許卡池或圖庫的 origin', async () => {
+  const { buildEmbedHtml } = await import('../lib/embed.mjs')
+  const tpl = fs.readFileSync(path.join(ROOT, 'web/index.html'), 'utf8')
+  const cspOf = h => h.match(/<meta http-equiv="Content-Security-Policy" content="([^"]*)">/)[1]
+  const own = injectPoolBase(tpl, 'https://pool.example/tos/')
+  assert.ok(own.indexOf('Content-Security-Policy') < own.indexOf('<script>'), 'CSP 要在第一個 script 之前')
+  const c1 = cspOf(own)
+  assert.match(c1, /default-src 'none'/)
+  assert.match(c1, /img-src https:\/\/pool\.example;/)
+  assert.match(c1, /connect-src 'self' https:\/\/pool\.example;/)
+  assert.match(c1, /base-uri 'none'; form-action 'none'; object-src 'none'/)
+  assert.match(own, /<meta name="referrer" content="no-referrer">/)
+  const friend = buildEmbedHtml(tpl, { cards: [] }, [], 'https://img.example/x/')
+  const c2 = cspOf(friend)
+  assert.match(c2, /img-src https:\/\/img\.example;/)
+  assert.match(c2, /connect-src 'none'/)
+})
+
+test('webp 轉檔只接受 PNG', () => {
+  const gif = Buffer.from('R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==', 'base64')
+  assert.throws(() => pngToWebp(gif), /webp 轉檔失敗/)
 })

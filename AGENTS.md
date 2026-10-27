@@ -42,6 +42,9 @@
   - 不得載入或發佈任何人的 `cards.json`;`docs/` 內不可有 cards.json。頁面與 tracked 檔案不得出現擁有者網址或帳號(測試會檢查擁有者帳號字串不得出現在追蹤檔);資料路徑只用同資料夾相對路徑 `./monsters.json`、`./img/`。
   - 必須保留 `noindex` 與 CSP meta(`connect-src 'self' https://website-api.tosgame.com`、`form-action 'none'`、`base-uri 'none'`);`script-src` 只能是 `'self'`:頁面不可有行內 `<script>` 或 `on*=` 屬性(UI 在 `lookup-app.js`,圖片失敗用 capture 的 error 監聽);`style-src 'unsafe-inline'` 因為頁面有內嵌 `<style>`。
   - POST 不加自訂 header(避免 CORS preflight)。
+  - 防點擊劫持:GitHub Pages 無法送 `frame-ancestors` header,`lookup.html` 以 `<style id="acj">body{display:none!important}</style>` 先隱藏整頁,`lookup-app.js` 只在 `window.top===window.self` 時移除;不可拿掉。
+- **自己的頁面與朋友版的 CSP**:`injectPoolBase` / `buildEmbedHtml` 會在 `<meta charset>` 後注入 CSP 與 `no-referrer`:`default-src 'none'`,`img-src` 只限卡池/圖庫網址的 origin,`connect-src` 自己的頁面為 `'self'` + 卡池 origin、朋友版為 `'none'`,`base-uri`/`form-action`/`object-src` 皆 `'none'`。`script-src 'unsafe-inline'` 是因為資料以行內 `<script>` 注入(朋友版需單檔離線)與圖片 `onerror`。
+- **卡圖轉檔**:上游 PNG 視為不可信,`lib/to_webp.py` 只接受 PNG(`formats=['PNG']`),超過像素上限(解壓縮炸彈)視為錯誤。
   - 修改 `web/lookup.*` 後須跑 `bin/tos-update`(或 `syncPool`)同步到 `docs/`;測試會比對兩者一致。
 
 ### 模組地圖
@@ -59,7 +62,7 @@
 | `lib/update.mjs` | 串起以上:profile + monsterData → data/*.json + 圖片 |
 | `web/index.html` | 前端模板(搜尋、篩選、格狀小圖、hover/tap 詳細);卡池基底 `window.TOS_POOL_BASE` |
 | `web/lookup.html`、`web/lookup.js`、`web/lookup-app.js` | 公開「查詢我的背包」頁;`lookup.js` 無依賴 ES module(`login`/`getProfile`/`aggregate`),`lookup-app.js` 是 UI;部署副本在 `docs/` |
-| `test/` | `npm test`(node:test),fixtures 全為假資料 |
+| `test/` | `npm test`(node:test),fixtures 全為假資料;暫存檔放 `os.tmpdir()`,不依賴本機路徑 |
 
 ## 已知未驗證
 - `login` 尚未用真實驗證碼實測過(含瀏覽器版 `web/lookup.js`:只用 Playwright 攔截模擬回應驗過 UI 流程);第一次跑若失敗,先對照 tos-tools 最新 `src/utils.tsx` 的 login 流程。
